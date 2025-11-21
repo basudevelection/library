@@ -176,9 +176,10 @@
     let currentUser = null;
     let currentTransactionId = null;
     let currentBookTitle = '';
+    let currentRollNo = '';  // For ratings
     let selectedStars = 0;
 
-    // Auth (unchanged)
+    // Auth
     async function signIn(email, password) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return toast(error.message, 'error');
@@ -228,14 +229,12 @@
     }
 
     async function generateUniqueCode() {
-      let code;
-      let exists = true;
-      while (exists) {
-        code = generateCode();
+      for (let i = 0; i < 100; i++) {  // Limit attempts to prevent infinite loop
+        const code = generateCode();
         const { data } = await supabase.from('books').select('code').eq('code', code).single();
-        exists = !!data;
+        if (!data) return code;
       }
-      return code;
+      throw new Error('Could not generate unique code after 100 attempts');
     }
 
     function showTab(tab) {
@@ -269,7 +268,7 @@
       const { error } = await supabase.from('ratings').insert({
         transaction_id: currentTransactionId,
         book_code: parseInt(document.getElementById('returnCode').value),
-        roll_no: '', // Fetch from transaction; in production, pass from returnDetails
+        roll_no: currentRollNo,  // Now properly set from trans
         rating: selectedStars,
         review
       });
@@ -277,7 +276,7 @@
       if (error) return toast(error.message, 'error');
       toast('Rating submitted! Thanks for feedback.');
       closeRating();
-      loadBooks(); // Refresh averages
+      loadBooks();
       loadHistory();
     }
 
@@ -288,15 +287,20 @@
       const title = document.getElementById('title').value.trim();
       const author = document.getElementById('author').value.trim();
       const category = document.getElementById('category').value.trim();
-      const code = await generateUniqueCode();
 
-      const { error } = await supabase.from('books').insert({
-        code, title, author, category, status: 'Available', created_by: currentUser.id
-      });
-      if (error) return toast(error.message, 'error');
-      toast(`Book Added: ${code}`);
-      e.target.reset();
-      loadBooks();
+      try {
+        const code = await generateUniqueCode();
+        const { error } = await supabase.from('books').insert({
+          code, title, author, category, status: 'Available', created_by: currentUser.id
+        });
+        if (error) throw error;
+        toast(`Book Added: ${code}`);
+        e.target.reset();
+        loadBooks();
+      } catch (err) {
+        console.error('Add book error:', err);
+        toast(err.message || 'Failed to add book', 'error');
+      }
     };
 
     async function getAverageRating(code) {
@@ -312,46 +316,59 @@
       const search = document.getElementById('searchInput').value.toLowerCase();
       const sort = document.getElementById('sortSelect').value;
 
-      let { data: books, error } = await supabase.from('books').select('*');
-      if (error) return toast(error.message, 'error');
+      try {
+        let { data: books, error } = await supabase.from('books').select('*');
+        if (error) throw error;
 
-      // Fetch ratings for all books
-      const bookCodes = books.map(b => b.code);
-      const { data: allRatings } = await supabase.from('ratings').select('*').in('book_code', bookCodes);
-      const ratingsMap = {};
-      bookCodes.forEach(code => {
-        const ratings = allRatings.filter(r => r.book_code === code);
-        const avg = ratings.length ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1) : 'N/A';
-        ratingsMap[code] = { avg, count: ratings.length };
-      });
+        // Fetch all ratings once
+        const bookCodes = books.map(b => b.code);
+        const { data: allRatings } = await supabase.from('ratings').select('*').in('book_code', bookCodes);
+        const ratingsMap = {};
+        bookCodes.forEach(code => {
+          const ratings = allRatings ? allRatings.filter(r => r.book_code === code) : [];
+          const avg = ratings.length ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1) : 'N/A';
+          ratingsMap[code] = { avg, count: ratings.length };
+        });
 
-      if (search) {
-        books = books.filter(b => 
-          b.title.toLowerCase().includes(search) ||
-          b.author.toLowerCase().includes(search) ||
-          b.code.toString().includes(search)
-        );
-      }
+        if (search) {
+          books = books.filter(b => 
+            b.title.toLowerCase().includes(search) ||
+            b.author.toLowerCase().includes(search) ||
+            b.code.toString().includes(search)
+          );
+        }
 
-      books.sort((a, b) => a[sort].localeCompare(b[sort]));
+        books.sort((a, b) => {
+          const valA = a[sort]?.toLowerCase() || '';
+          const valB = b[sort]?.toLowerCase() || '';
+          return valA.localeCompare(valB);
+        });
 
-      container.innerHTML = books.map(async b => {
-        const ratingInfo = ratingsMap[b.code];
-        return `
-          <div class="border-2 rounded-xl p-6 hover:shadow-xl transition bg-gradient-to-r from-${b.status === 'Available' ? 'green' : 'red'}-50">
-            <h3 class="text-2xl font-bold">${b.title}</h3>
-            <p class="text-lg"><strong>Author:</strong> ${b.author}</p>
-            <p><strong>Category:</strong> ${b.category}</p>
-            <p class="font-mono text-xl font-bold mt-3">Code: ${b.code}</p>
-            <p class="text-2xl font-bold mt-3 ${b.status === 'Available' ? 'text-green-600' : 'text-red-600'}">${b.status}</p>
-            <p class="text-lg mt-2"><strong>Rating:</strong> ${ratingInfo.avg}/5 (${ratingInfo.count} reviews)</p>
-            <div class="mt-4 flex gap-3">
-              <button onclick="editBook(${b.id})" class="bg-blue-600 text-white px-5 py-2 rounded-lg ${!currentUser ? 'hidden' : ''}">Edit</button>
-              <button onclick="deleteBook(${b.id})" class="bg-red-600 text-white px-5 py-2 rounded-lg ${!currentUser ? 'hidden' : ''}">Delete</button>
+        // Fixed: No async in map - render strings directly
+        const bookHtml = books.map(b => {
+          const ratingInfo = ratingsMap[b.code];
+          const ratingText = ratingInfo.avg !== 'N/A' ? `${ratingInfo.avg}/5 (${ratingInfo.count} reviews)` : 'No reviews yet';
+          return `
+            <div class="border-2 rounded-xl p-6 hover:shadow-xl transition bg-gradient-to-r from-${b.status === 'Available' ? 'green' : 'red'}-50">
+              <h3 class="text-2xl font-bold">${b.title}</h3>
+              <p class="text-lg"><strong>Author:</strong> ${b.author}</p>
+              <p><strong>Category:</strong> ${b.category}</p>
+              <p class="font-mono text-xl font-bold mt-3">Code: ${b.code}</p>
+              <p class="text-2xl font-bold mt-3 ${b.status === 'Available' ? 'text-green-600' : 'text-red-600'}">${b.status}</p>
+              <p class="text-lg mt-2"><strong>Rating:</strong> ${ratingText}</p>
+              <div class="mt-4 flex gap-3">
+                <button onclick="editBook(${b.id})" class="bg-blue-600 text-white px-5 py-2 rounded-lg">Edit</button>
+                <button onclick="deleteBook(${b.id})" class="bg-red-600 text-white px-5 py-2 rounded-lg">Delete</button>
+              </div>
             </div>
-          </div>
-        `;
-      }).join(''); // Note: Await not needed in map; ratings fetched upfront
+          `;
+        }).join('');
+        container.innerHTML = bookHtml;
+      } catch (err) {
+        console.error('Load books error:', err);
+        toast('Failed to load books', 'error');
+        container.innerHTML = '<p class="text-center text-gray-500">Error loading books. Check console.</p>';
+      }
     }
 
     window.deleteBook = async (id) => {
@@ -380,7 +397,7 @@
     document.getElementById('searchInput').oninput = loadBooks;
     document.getElementById('sortSelect').onchange = loadBooks;
 
-    // ============ Issue Book (unchanged) ============
+    // ============ Issue Book ============
     document.getElementById('issueForm').onsubmit = async (e) => {
       e.preventDefault();
       if (!currentUser) return toast('Login required', 'error');
@@ -388,178 +405,213 @@
       const name = document.getElementById('studentName').value.trim();
       const roll = document.getElementById('rollNo').value.trim();
 
-      const { data: book } = await supabase.from('books').select('*').eq('code', code).single();
-      if (!book) return toast('Book not found!', 'error');
-      if (book.status === 'Issued') return toast('Already Issued!', 'error');
+      try {
+        const { data: book } = await supabase.from('books').select('*').eq('code', code).single();
+        if (!book) return toast('Book not found!', 'error');
+        if (book.status === 'Issued') return toast('Already Issued!', 'error');
 
-      const issueDate = new Date();
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 15);
+        const issueDate = new Date();
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 15);
 
-      const trans = {
-        book_code: code,
-        book_title: book.title,
-        student_name: name,
-        roll_no: roll,
-        issue_date: issueDate.toISOString(),
-        due_date: dueDate.toISOString(),
-        return_date: null,
-        fine: 0,
-        status: 'Issued',
-        created_by: currentUser.id
-      };
+        const trans = {
+          book_code: code,
+          book_title: book.title,
+          student_name: name,
+          roll_no: roll,
+          issue_date: issueDate.toISOString(),
+          due_date: dueDate.toISOString(),
+          return_date: null,
+          fine: 0,
+          status: 'Issued',
+          created_by: currentUser.id
+        };
 
-      const { error: bookError } = await supabase.from('books').update({ status: 'Issued' }).eq('code', code);
-      const { data: transData, error: transError } = await supabase.from('transactions').insert(trans).select().single();
-      if (bookError || transError) return toast('Error issuing book', 'error');
-      toast(`Issued to ${name}! Due: ${dueDate.toLocaleDateString()}`);
-      e.target.reset();
-      loadIssued();
+        const { error: bookError } = await supabase.from('books').update({ status: 'Issued' }).eq('code', code);
+        const { data: transData, error: transError } = await supabase.from('transactions').insert(trans).select().single();
+        if (bookError || transError) throw bookError || transError;
+        toast(`Issued to ${name}! Due: ${dueDate.toLocaleDateString()}`);
+        e.target.reset();
+        loadIssued();
+      } catch (err) {
+        console.error('Issue book error:', err);
+        toast(err.message || 'Error issuing book', 'error');
+      }
     };
 
     // ============ Return / Renew ============
     document.getElementById('returnCode').oninput = async function() {
       const code = parseInt(this.value);
-      if (!code || code < 10000) { document.getElementById('returnDetails').innerHTML = ''; return; }
-
-      const { data: trans } = await supabase.from('transactions').select('*').eq('book_code', code).eq('status', 'Issued').single();
-      if (!trans) {
-        document.getElementById('returnDetails').innerHTML = '<p class="text-red-600 text-2xl">Not issued or invalid code</p>';
-        return;
+      if (!code || code < 10000) { 
+        document.getElementById('returnDetails').innerHTML = ''; 
+        return; 
       }
 
-      const today = new Date();
-      const due = new Date(trans.due_date);
-      const lateDays = Math.max(0, Math.floor((today - due) / (1000*60*60*24)));
-      const fine = lateDays * 2;
-      currentBookTitle = trans.book_title; // For modal
+      try {
+        const { data: trans } = await supabase.from('transactions').select('*').eq('book_code', code).eq('status', 'Issued').single();
+        if (!trans) {
+          document.getElementById('returnDetails').innerHTML = '<p class="text-red-600 text-2xl">Not issued or invalid code</p>';
+          return;
+        }
 
-      document.getElementById('returnDetails').innerHTML = `
-        <div class="bg-gray-50 p-8 rounded-xl border-4 border-dashed mt-8">
-          <h3 class="text-3xl font-bold">${trans.book_title}</h3>
-          <p class="text-xl"><strong>Student:</strong> ${trans.student_name} (${trans.roll_no})</p>
-          <p><strong>Due Date:</strong> ${due.toLocaleDateString()}</p>
-          <p class="text-2xl font-bold text-red-600">Late by: ${lateDays} days → Fine: ₹${fine}</p>
-          <div class="mt-8 flex gap-6">
-            <button onclick="returnBook(${code}, ${fine}, ${trans.id})" class="bg-red-600 text-white px-10 py-5 rounded-xl text-xl font-bold hover:bg-red-700">
-              Return Now (₹${fine} fine)
-            </button>
-            <button onclick="renewBook(${code})" class="bg-blue-600 text-white px-10 py-5 rounded-xl text-xl font-bold hover:bg-blue-700">
-              Renew (+15 days)
-            </button>
+        const today = new Date();
+        const due = new Date(trans.due_date);
+        const lateDays = Math.max(0, Math.floor((today - due) / (1000*60*60*24)));
+        const fine = lateDays * 2;
+        currentBookTitle = trans.book_title;
+        currentRollNo = trans.roll_no;  // For ratings
+
+        document.getElementById('returnDetails').innerHTML = `
+          <div class="bg-gray-50 p-8 rounded-xl border-4 border-dashed mt-8">
+            <h3 class="text-3xl font-bold">${trans.book_title}</h3>
+            <p class="text-xl"><strong>Student:</strong> ${trans.student_name} (${trans.roll_no})</p>
+            <p><strong>Due Date:</strong> ${due.toLocaleDateString()}</p>
+            <p class="text-2xl font-bold text-red-600">Late by: ${lateDays} days → Fine: ₹${fine}</p>
+            <div class="mt-8 flex gap-6">
+              <button onclick="returnBook(${code}, ${fine}, ${trans.id})" class="bg-red-600 text-white px-10 py-5 rounded-xl text-xl font-bold hover:bg-red-700">
+                Return Now (₹${fine} fine)
+              </button>
+              <button onclick="renewBook(${code})" class="bg-blue-600 text-white px-10 py-5 rounded-xl text-xl font-bold hover:bg-blue-700">
+                Renew (+15 days)
+              </button>
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      } catch (err) {
+        console.error('Return lookup error:', err);
+        toast('Error fetching book details', 'error');
+      }
     };
 
     window.returnBook = async (code, fine, transId) => {
       if (!currentUser) return toast('Login required', 'error');
-      const today = new Date();
-      const { error: transError } = await supabase.from('transactions').update({
-        return_date: today.toISOString(),
-        fine,
-        status: 'Returned'
-      }).eq('id', transId);
+      try {
+        const today = new Date();
+        const { error: transError } = await supabase.from('transactions').update({
+          return_date: today.toISOString(),
+          fine,
+          status: 'Returned'
+        }).eq('id', transId);
 
-      const { error: bookError } = await supabase.from('books').update({ status: 'Available' }).eq('code', code);
+        const { error: bookError } = await supabase.from('books').update({ status: 'Available' }).eq('code', code);
 
-      if (transError || bookError) return toast('Error returning book', 'error');
-      toast(`Book Returned! Fine Collected: ₹${fine}`);
-      document.getElementById('returnCode').value = '';
-      document.getElementById('returnDetails').innerHTML = '';
-      currentTransactionId = transId; // For rating
-      document.getElementById('bookTitleForRating').textContent = currentBookTitle;
-      document.getElementById('ratingModal').classList.remove('hidden'); // Show rating modal
-      loadIssued();
-      loadHistory();
+        if (transError || bookError) throw transError || bookError;
+        toast(`Book Returned! Fine Collected: ₹${fine}`);
+        document.getElementById('returnCode').value = '';
+        document.getElementById('returnDetails').innerHTML = '';
+        currentTransactionId = transId;
+        document.getElementById('bookTitleForRating').textContent = currentBookTitle;
+        document.getElementById('ratingModal').classList.remove('hidden');
+        loadIssued();
+        loadHistory();
+      } catch (err) {
+        console.error('Return book error:', err);
+        toast(err.message || 'Error returning book', 'error');
+      }
     };
 
     window.renewBook = async (code) => {
       if (!currentUser) return toast('Login required', 'error');
-      const { data: trans } = await supabase.from('transactions').select('*').eq('book_code', code).eq('status', 'Issued').single();
-      if (!trans) return;
+      try {
+        const { data: trans } = await supabase.from('transactions').select('*').eq('book_code', code).eq('status', 'Issued').single();
+        if (!trans) return toast('Transaction not found', 'error');
 
-      const newDue = new Date(trans.due_date);
-      newDue.setDate(newDue.getDate() + 15);
+        const newDue = new Date(trans.due_date);
+        newDue.setDate(newDue.getDate() + 15);
 
-      const { error } = await supabase.from('transactions').update({
-        due_date: newDue.toISOString(),
-        status: 'Renewed'
-      }).eq('book_code', code).eq('status', 'Issued');
+        const { error } = await supabase.from('transactions').update({
+          due_date: newDue.toISOString(),
+          status: 'Renewed'
+        }).eq('id', trans.id);
 
-      if (error) return toast('Error renewing book', 'error');
-      toast('Renewed! New Due: ' + newDue.toLocaleDateString());
-      loadIssued();
+        if (error) throw error;
+        toast('Renewed! New Due: ' + newDue.toLocaleDateString());
+        loadIssued();
+      } catch (err) {
+        console.error('Renew error:', err);
+        toast(err.message || 'Error renewing book', 'error');
+      }
     };
 
-    // ============ Load Tables ============
-    let issuedChannel, historyChannel;
+    // ============ Load Tables with Realtime ============
+    let issuedChannel, historyChannel, booksChannel;
 
     async function loadIssued() {
       if (!currentUser) return;
       const tbody = document.getElementById('issuedTable');
-      let { data: transactions, error } = await supabase.from('transactions').select('*').or('status.eq.Issued,status.eq.Renewed');
-      if (error) return toast(error.message, 'error');
+      try {
+        let { data: transactions, error } = await supabase.from('transactions').select('*').or('status.eq.Issued,status.eq.Renewed');
+        if (error) throw error;
 
-      const today = new Date();
-      transactions.forEach(t => {
-        const due = new Date(t.due_date);
-        const late = Math.max(0, Math.floor((today - due) / (86400000)));
-        t.late = late;
-        t.fine = late * 2;
-      });
+        const today = new Date();
+        transactions.forEach(t => {
+          const due = new Date(t.due_date);
+          const late = Math.max(0, Math.floor((today - due) / (86400000)));
+          t.late = late;
+          t.fine = late * 2;
+        });
 
-      tbody.innerHTML = transactions.map(t => `
-        <tr class="${t.late > 0 ? 'bg-red-100' : ''}">
-          <td class="px-6 py-4 font-mono">${t.book_code}</td>
-          <td class="px-6 py-4 font-bold">${t.book_title}</td>
-          <td class="px-6 py-4">${t.student_name}<br><small>${t.roll_no}</small></td>
-          <td class="px-6 py-4">${new Date(t.issue_date).toLocaleDateString()}</td>
-          <td class="px-6 py-4">${new Date(t.due_date).toLocaleDateString()}</td>
-          <td class="px-6 py-4 font-bold text-red-600">${t.late}</td>
-          <td class="px-6 py-4 font-bold text-red-600">₹${t.fine}</td>
-        </tr>
-      `).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500">No books issued</td></tr>';
+        tbody.innerHTML = transactions.map(t => `
+          <tr class="${t.late > 0 ? 'bg-red-100' : ''}">
+            <td class="px-6 py-4 font-mono">${t.book_code}</td>
+            <td class="px-6 py-4 font-bold">${t.book_title}</td>
+            <td class="px-6 py-4">${t.student_name}<br><small>${t.roll_no}</small></td>
+            <td class="px-6 py-4">${new Date(t.issue_date).toLocaleDateString()}</td>
+            <td class="px-6 py-4">${new Date(t.due_date).toLocaleDateString()}</td>
+            <td class="px-6 py-4 font-bold text-red-600">${t.late}</td>
+            <td class="px-6 py-4 font-bold text-red-600">₹${t.fine}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500">No books issued</td></tr>';
+      } catch (err) {
+        console.error('Load issued error:', err);
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-gray-500">Error loading issued books</td></tr>';
+      }
 
+      // Realtime
       if (issuedChannel) issuedChannel.unsubscribe();
       issuedChannel = supabase.channel('issued').on('postgres_changes', 
         { event: '*', schema: 'public', table: 'transactions' }, 
-        () => loadIssued()
+        loadIssued
       ).subscribe();
     }
 
     async function loadHistory() {
       if (!currentUser) return;
       const tbody = document.getElementById('historyTable');
-      let { data: history, error } = await supabase.from('transactions').select('*, ratings(rating, review)').eq('status', 'Returned');
-      if (error) return toast(error.message, 'error');
+      try {
+        let { data: history, error } = await supabase.from('transactions').select('*, ratings(rating, review)').eq('status', 'Returned');
+        if (error) throw error;
 
-      tbody.innerHTML = history.map(t => {
-        const rating = t.ratings?.rating || 'N/A';
-        const review = t.ratings?.review || '';
-        return `<tr>
-          <td class="px-6 py-4 font-mono">${t.book_code}</td>
-          <td class="px-6 py-4">${t.student_name}<br><small>${t.roll_no}</small></td>
-          <td class="px-6 py-4">${new Date(t.issue_date).toLocaleDateString()}</td>
-          <td class="px-6 py-4">${t.return_date ? new Date(t.return_date).toLocaleDateString() : '-'}</td>
-          <td class="px-6 py-4 font-bold">₹${t.fine}</td>
-          <td class="px-6 py-4">${rating !== 'N/A' ? `${rating}/5 ${'★'.repeat(rating)}` : 'No rating'}</td>
-          <td class="px-6 py-4"><span class="bg-green-200 px-4 py-2 rounded-full">Returned</span></td>
-        </tr>`;
-      }).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500">No history yet</td></tr>';
+        tbody.innerHTML = history.map(t => {
+          const rating = t.ratings?.rating || 'N/A';
+          return `<tr>
+            <td class="px-6 py-4 font-mono">${t.book_code}</td>
+            <td class="px-6 py-4">${t.student_name}<br><small>${t.roll_no}</small></td>
+            <td class="px-6 py-4">${new Date(t.issue_date).toLocaleDateString()}</td>
+            <td class="px-6 py-4">${t.return_date ? new Date(t.return_date).toLocaleDateString() : '-'}</td>
+            <td class="px-6 py-4 font-bold">₹${t.fine}</td>
+            <td class="px-6 py-4">${rating !== 'N/A' ? `${rating}/5 ${'★'.repeat(rating)}` : 'No rating'}</td>
+            <td class="px-6 py-4"><span class="bg-green-200 px-4 py-2 rounded-full">Returned</span></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500">No history yet</td></tr>';
+      } catch (err) {
+        console.error('Load history error:', err);
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-gray-500">Error loading history</td></tr>';
+      }
 
+      // Realtime
       if (historyChannel) historyChannel.unsubscribe();
       historyChannel = supabase.channel('history').on('postgres_changes', 
         { event: '*', schema: 'public', table: 'transactions' }, 
-        () => loadHistory()
+        loadHistory
       ).subscribe();
     }
 
     function loadAll() {
       if (!currentUser) return;
-      if (document.getElementById('books').classList.contains('hidden') === false) loadBooks();
-      if (document.getElementById('issued').classList.contains('hidden') === false) loadIssued();
-      if (document.getElementById('history').classList.contains('hidden') === false) loadHistory();
+      if (!document.getElementById('books').classList.contains('hidden')) loadBooks();
+      if (!document.getElementById('issued').classList.contains('hidden')) loadIssued();
+      if (!document.getElementById('history').classList.contains('hidden')) loadHistory();
     }
 
     // Cleanup
@@ -567,6 +619,9 @@
       if (issuedChannel) issuedChannel.unsubscribe();
       if (historyChannel) historyChannel.unsubscribe();
     });
+
+    // Initial load after delay for DOM
+    setTimeout(loadAll, 500);
   </script>
 </body>
 </html>
