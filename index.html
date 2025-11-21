@@ -10,26 +10,11 @@
     .tab-btn.active { @apply border-b-4 border-indigo-600 text-indigo-600 font-bold; }
     .hidden { display: none; }
     #toast { transition: all 0.3s; }
-    .star { cursor: pointer; font-size: 2rem; color: #fbbf24; }
+    .star { cursor: pointer; font-size: 2.2rem; color: #fbbf24; }
     .star.filled { color: #f59e0b; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen font-sans">
-
-  <!-- Login Modal -->
-  <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-    <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full mx-4">
-      <h2 class="text-3xl font-bold mb-6 text-center">Library Login</h2>
-      <form id="authForm" class="space-y-5">
-        <input type="email" id="email" value="test@example.com" placeholder="Email" required class="w-full p-4 border-2 rounded-lg text-lg"/>
-        <input type="password" id="password" value="123456" placeholder="Password" required class="w-full p-4 border-2 rounded-lg text-lg"/>
-        <button type="submit" class="w-full bg-indigo-600 text-white py-4 rounded-lg text-xl font-bold hover:bg-indigo-700">
-          Login / Register
-        </button>
-      </form>
-      <p class="text-center mt-4 text-sm text-gray-600">First time? It auto-registers.</p>
-    </div>
-  </div>
 
   <!-- Rating Modal -->
   <div id="ratingModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 hidden">
@@ -46,14 +31,15 @@
       <p class="text-lg mb-4">Your rating: <span id="selectedRating" class="font-bold">0</span>/5</p>
       <textarea id="reviewText" placeholder="Optional review..." class="w-full p-4 border-2 rounded-lg mb-6" rows="3"></textarea>
       <div class="flex gap-4">
-        <button onclick="submitRating()" class="flex-1 bg-green-600 text-white py-4 rounded-lg text-xl font-bold hover:bg-green-700">Submit Rating</button>
-        <button onclick="closeRating()" class="flex-1 bg-gray-500 text-white py-4 rounded-lg text-xl font-bold hover:bg-gray-600">Skip</button>
+        <button onclick="submitRating()" class="flex-1 bg-green-600 text-white py-4 rounded-lg text-xl font-bold">Submit</button>
+        <button onclick="closeRating()" class="flex-1 bg-gray-500 text-white py-4 rounded-lg text-xl font-bold">Skip</button>
       </div>
     </div>
   </div>
 
   <div class="container mx-auto p-6 max-w-7xl">
     <h1 class="text-5xl font-bold text-center my-10 text-indigo-800">Library Management System</h1>
+    <p class="text-center text-gray-600 mb-8 text-lg">No login required • Full features • Real-time sync</p>
 
     <!-- Tabs -->
     <div class="flex flex-wrap gap-3 mb-10 bg-white rounded-lg shadow p-3 overflow-x-auto">
@@ -77,12 +63,12 @@
       </div>
 
       <div class="bg-white rounded-xl shadow-lg p-8">
-        <input type="text" id="searchInput" placeholder="Search books..." class="w-full p-4 border-2 rounded-lg mb-6 text-lg"/>
+        <input type="text" id="searchInput" placeholder="Search by title, author or code..." class="w-full p-4 border-2 rounded-lg mb-6 text-lg"/>
         <div id="booksList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
       </div>
     </div>
 
-    <!-- Issue, Return, Issued, History tabs (same as before - simplified for brevity) -->
+    <!-- Issue Tab -->
     <div id="issue" class="tab-content hidden">
       <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-10">
         <h2 class="text-3xl font-bold mb-8 text-green-700">Issue Book</h2>
@@ -95,6 +81,7 @@
       </div>
     </div>
 
+    <!-- Return Tab -->
     <div id="return" class="tab-content hidden">
       <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-10">
         <h2 class="text-3xl font-bold mb-8 text-red-700">Return / Renew Book</h2>
@@ -103,25 +90,30 @@
       </div>
     </div>
 
+    <!-- Issued & History Tables -->
     <div id="issued" class="tab-content hidden">
       <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-        <h2 class="text-3xl font-bold p-8 bg-indigo-600 text-white">Currently Issued</h2>
-        <div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr>
-          <th class="px-6 py-4 text-left">Code</th><th class="px-6 py-4 text-left">Title</th>
-          <th class="px-6 py-4 text-left">Student</th><th class="px-6 py-4 text-left">Due</th>
-          <th class="px-6 py-4 text-left">Fine ₹</th>
-        </tr></thead><tbody id="issuedTable"></tbody></table></div>
+        <h2 class="text-3xl font-bold p-8 bg-indigo-600 text-white">Currently Issued Books</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full"><thead class="bg-gray-100"><tr>
+            <th class="px-6 py-4 text-left">Code</th><th class="px-6 py-4 text-left">Title</th>
+            <th class="px-6 py-4 text-left">Student</th><th class="px-6 py-4 text-left">Due Date</th>
+            <th class="px-6 py-4 text-left">Fine ₹</th>
+          </tr></thead><tbody id="issuedTable"></tbody></table>
+        </div>
       </div>
     </div>
 
     <div id="history" class="tab-content hidden">
       <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-        <h2 class="text-3xl font-bold p-8 bg-purple-600 text-white">History</h2>
-        <div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr>
-          <th class="px-6 py-4 text-left">Code</th><th class="px-6 py-4 text-left">Student</th>
-          <th class="px-6 py-4 text-left">Issued</th><th class="px-6 py-4 text-left">Returned</th>
-          <th class="px-6 py-4 text-left">Fine ₹</th><th class="px-6 py-4 text-left">Rating</th>
-        </tr></thead><tbody id="historyTable"></tbody></table></div>
+        <h2 class="text-3xl font-bold p-8 bg-purple-600 text-white">Transaction History</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full"><thead class="bg-gray-100"><tr>
+            <th class="px-6 py-4 text-left">Code</th><th class="px-6 py-4 text-left">Student</th>
+            <th class="px-6 py-4 text-left">Issued</th><th class="px-6 py-4 text-left">Returned</th>
+            <th class="px-6 py-4 text-left">Fine ₹</th><th class="px-6 py-4 text-left">Rating</th>
+          </tr></thead><tbody id="historyTable"></tbody></table>
+        </div>
       </div>
     </div>
   </div>
@@ -131,36 +123,18 @@
   <script>
     const supabase = supabase.createClient(
       'https://mzldtrcpufmeikohxxxz.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16bGR0cmNwdWZtZWlrb2h4eHh6Iiwicm9sZSI6ImFub24sImlhdCI6MTc2MzczNzUyMywiZXhwIjoyMDc5MzEzNTIzfQ.NEMg1yPF4eOuCqu-WbpYL1p91HDhoiOHKYo2yuH7LH4'
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16bGR0cmNwdWZtZWlrb2h4eHh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3Mzc1MjMsImV4cCI6MjA3OTMxMzUyM30.NEMg1yPF4eOuCqu-WbpYL1p91HDhoiOHKYo2yuH7LH4'
     );
 
-    let user = null;
     let currentTransId = null;
     let currentBookTitle = '';
     let currentRollNo = '';
     let selectedStars = 0;
 
-    // Auth
-    document.getElementById('authForm').onsubmit = async e => {
-      e.preventDefault();
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: e.target.email.value,
-        password: e.target.password.value
-      });
-      if (error) await supabase.auth.signUp({ email: e.target.email.value, password: e.target.password.value });
-      else user = data.user;
-      document.getElementById('loginModal').classList.add('hidden');
-      loadAll();
-    };
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) { user = data.session.user; document.getElementById('loginModal').classList.add('hidden'); loadAll(); }
-    });
-
     function toast(msg, type = 'success') {
       const t = document.getElementById('toast');
       t.textContent = msg;
-      t.className = `fixed bottom-8 right-8 px-8 py-5 rounded-xl text-white font-bold text-lg shadow-2xl z-50 ${type==='error'?'bg-red-600':type==='warn'?'bg-yellow-600':'bg-green-600'}`;
+      t.className = `fixed bottom-8 right-8 px-8 py-5 rounded-xl text-white font-bold text-lg shadow-2xl z-50 ${type==='error'?'bg-red-600':'bg-green-600'}`;
       t.classList.remove('hidden');
       setTimeout(() => t.classList.add('hidden'), 4000);
     }
@@ -173,7 +147,7 @@
       loadAll();
     }
 
-    // Generate unique 5-digit code
+    // Generate unique code
     async function generateCode() {
       for (let i = 0; i < 50; i++) {
         const code = Math.floor(10000 + Math.random() * 90000);
@@ -186,14 +160,12 @@
     // Add Book
     document.getElementById('bookForm').onsubmit = async e => {
       e.preventDefault();
-      if (!user) return toast('Login required', 'error');
       const code = await generateCode();
       const { error } = await supabase.from('books').insert({
         code,
         title: e.target.title.value,
         author: e.target.author.value,
-        category: e.target.category.value,
-        created_by: user.id
+        category: e.target.category.value
       });
       if (error) return toast(error.message, 'error');
       toast(`Book added! Code: ${code}`);
@@ -201,7 +173,7 @@
       loadBooks();
     };
 
-    // Load Books with Ratings
+    // Load Books with average rating
     async function loadBooks() {
       const { data: books } = await supabase.from('books').select('*');
       const { data: ratings } = await supabase.from('ratings').select('book_code, rating');
@@ -212,7 +184,7 @@
         ratingMap[r.book_code].count += 1;
       });
 
-      const search = document.getElementById('searchInput').value.toLowerCase();
+      const search = document.getElementById('searchInput')?.value.toLowerCase() || '';
       const filtered = books.filter(b =>
         b.title.toLowerCase().includes(search) ||
         b.author.toLowerCase().includes(search) ||
@@ -222,9 +194,9 @@
       document.getElementById('booksList').innerHTML = filtered.map(b => {
         const r = ratingMap[b.code];
         const avg = r ? (r.sum / r.count).toFixed(1) : 'N/A';
-        const stars = r ? '★'.repeat(Math.round(avg)) + '☆'.repeat(5-Math.round(avg)) : '';
+        const stars = r ? '★'.repeat(Math.round(avg)) + '☆'.repeat(5 - Math.round(avg)) : '';
         return `
-          <div class="border-2 rounded-xl p-6 hover:shadow-2xl transition ${b.status==='Available'?'border-green-400':'border-red-400'}">
+          <div class="border-2 rounded-xl p-6 hover:shadow-2xl transition ${b.status==='Available'?'border-green-400 bg-green-50':'border-red-400 bg-red-50'}">
             <h3 class="text-2xl font-bold">${b.title}</h3>
             <p class="text-lg"><strong>Author:</strong> ${b.author}</p>
             <p><strong>Category:</strong> ${b.category}</p>
@@ -233,10 +205,10 @@
             <p class="text-xl mt-4"><strong>Rating:</strong> ${avg}/5 ${stars} (${r?.count||0} reviews)</p>
           </div>
         `;
-      }).join('') || '<p class="text-center text-gray-500 col-span-3">No books found</p>';
+      }).join('') || '<p class="col-span-3 text-center text-gray-500 text-xl">No books found</p>';
     }
 
-    document.getElementById('searchInput').oninput = loadBooks;
+    document.getElementById('searchInput')?.addEventListener('input', loadBooks);
 
     // Issue Book
     document.getElementById('issueForm').onsubmit = async e => {
@@ -245,7 +217,6 @@
       const { data: book } = await supabase.from('books').select('*').eq('code', code).single();
       if (!book || book.status === 'Issued') return toast('Book not available', 'error');
 
-      const issueDate = new Date().toISOString();
       const dueDate = new Date(Date.now() + 15*24*60*60*1000).toISOString();
 
       await supabase.from('transactions').insert({
@@ -253,14 +224,13 @@
         book_title: book.title,
         student_name: e.target.studentName.value,
         roll_no: e.target.rollNo.value,
-        issue_date: issueDate,
+        issue_date: new Date().toISOString(),
         due_date: dueDate,
-        created_by: user.id
+        status: 'Issued'
       });
       await supabase.from('books').update({ status: 'Issued' }).eq('code', code);
-      toast('Book issued successfully!');
+      toast('Book issued!');
       e.target.reset();
-();
       loadIssued();
     };
 
@@ -268,7 +238,7 @@
     document.getElementById('returnCode').oninput = async function() {
       const code = +this.value;
       if (!code) { document.getElementById('returnDetails').innerHTML = ''; return; }
-      const { data: trans } = await supabase.from('transactions').select('*').eq('book_code', code).eq('status', 'Issued').single();
+      const { data: trans } = await supabase.from('transactions').select('*').eq('book_code', code).in('status', ['Issued','Renewed']).single();
       if (!trans) {
         document.getElementById('returnDetails').innerHTML = '<p class="text-red-600 text-2xl">Not issued</p>';
         return;
@@ -286,7 +256,7 @@
           <p class="text-2xl font-bold text-red-600 mt-4">Late: ${daysLate} days → Fine: ₹${fine}</p>
           <div class="mt-8 flex gap-6">
             <button onclick="returnBook(${code}, ${fine}, ${trans.id})" class="bg-red-600 text-white px-12 py-5 rounded-xl text-2xl font-bold">Return Now</button>
-            <button onclick="renewBook(${code})" class="bg-blue-600 text-white px-12 py-5 rounded-xl text-2xl font-bold">Renew (+15 days)</button>
+            <button onclick="renewBook(${code})" class="bg-blue-600 text-white px-12 py-5 rounded-xl text-2xl font-bold">Renew</button>
           </div>
         </div>
       `;
@@ -312,15 +282,15 @@
       loadIssued();
     };
 
-    // Rating
+    // Rating Modal
     function setRating(n) {
       selectedStars = n;
       document.getElementById('selectedRating').textContent = n;
       document.querySelectorAll('.star').forEach((s,i) => s.classList.toggle('filled', i < n));
     }
-    function closeRating() { document.getElementById('ratingModal').classList.add('hidden'); selectedStars = 0; }
+    function closeRating() { document.getElementById('ratingModal').classList.add('hidden'); selectedStars = 0; document.getElementById('reviewText').value = ''; }
     window.submitRating = async () => {
-      if (selectedStars === 0) return toast('Select stars', 'warn');
+      if (selectedStars === 0) return toast('Please select rating', 'error');
       const { error } = await supabase.from('ratings').insert({
         transaction_id: currentTransId,
         book_code: +document.getElementById('returnCode').value || 0,
@@ -329,16 +299,15 @@
         review: document.getElementById('reviewText').value
       });
       if (error) return toast(error.message, 'error');
-      toast('Thank you for rating!');
+      toast('Thank you for your rating!');
       closeRating();
       loadBooks(); loadHistory();
     };
 
-    // Load Issued & History (simplified but working)
+    // Load Issued & History
     async function loadIssued() {
-      const { data } = await supabase.from('transactions').select('*').in('status', ['Issued', 'Renewed']);
-      const tbody = document.getElementById('issuedTable');
-      tbody.innerHTML = data.map(t => {
+      const { data } = await supabase.from('transactions').select('*').in('status', ['Issued','Renewed']);
+      document.getElementById('issuedTable').innerHTML = data.map(t => {
         const late = Math.max(0, Math.floor((Date.now() - new Date(t.due_date)) / 86400000));
         return `<tr class="${late>0?'bg-red-100':''}">
           <td class="px-6 py-4 font-mono">${t.book_code}</td>
@@ -358,22 +327,24 @@
           <td class="px-6 py-4">${t.student_name}<br><small>${t.roll_no}</small></td>
           <td class="px-6 py-4">${new Date(t.issue_date).toLocaleDateString()}</td>
           <td class="px-6 py-4">${t.return_date ? new Date(t.return_date).toLocaleDateString() : '-'}</td>
-          <td class="px-6 py-4 font-bold">₹${t.fine}</td>
+          <td class="px-6 py-4 font-bold">₹${t.fine || 0}</td>
           <td class="px-6 py-4">${t.ratings?.rating ? t.ratings.rating + '/5 ★'.repeat(t.ratings.rating) : 'No rating'}</td>
         </tr>
       `).join('') || '<tr><td colspan="6" class="text-center py-10 text-gray-500">No history</td></tr>';
     }
 
     function loadAll() {
-      if (!user) return;
-      const tab = document.querySelector('.tab-btn.active').onclick.toString().match(/'(\w+)'/)[1];
-      if (tab === 'books') loadBooks();
-      if (tab === 'issued') loadIssued();
-      if (tab === 'history') loadHistory();
+      const active = document.querySelector('.tab-btn.active').textContent.trim();
+      if (active.includes('Books')) loadBooks();
+      if (active.includes('Issued')) loadIssued();
+      if (active.includes('History')) loadHistory();
     }
 
-    // Auto-load on tab change
+    // Auto load on tab change
     document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => setTimeout(loadAll, 100));
+
+    // Initial load
+    loadBooks();
   </script>
 </body>
 </html>
